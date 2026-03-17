@@ -42,7 +42,15 @@ class ArxivEnrichmentService:
         if not arxiv_item_ids:
             return items
 
-        metadata_by_id = await self.fetch_metadata(sorted(arxiv_item_ids))
+        sorted_arxiv_ids = sorted(arxiv_item_ids)
+        try:
+            metadata_by_id = await self.fetch_metadata(sorted_arxiv_ids)
+        except Exception:
+            logger.exception(
+                "Failed to fetch arXiv metadata for %s items; skipping enrichment",
+                len(sorted_arxiv_ids),
+            )
+            return items
 
         enriched: list[NewsItem] = []
         for item in items:

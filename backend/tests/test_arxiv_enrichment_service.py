@@ -1,5 +1,7 @@
 from datetime import UTC, datetime
 
+import httpx
+
 from app.models.news import NewsItem
 from app.services.arxiv_enrichment_service import ArxivEnrichmentService, ArxivMetadata
 
@@ -96,3 +98,27 @@ async def test_enrich_items_applies_priority_and_extra_fields(monkeypatch) -> No
     assert unchanged_non_arxiv.announced_at is None
     assert unchanged_non_arxiv.original_published_at is None
     assert unchanged_non_arxiv.updated_at is None
+
+
+async def test_enrich_items_skips_arxiv_failures_and_returns_original_items(monkeypatch, caplog) -> None:
+    service = ArxivEnrichmentService()
+
+    async def fake_fetch_metadata(_arxiv_ids: list[str]) -> dict[str, ArxivMetadata]:
+        raise httpx.ReadTimeout("timed out")
+
+    monkeypatch.setattr(service, "fetch_metadata", fake_fetch_metadata)
+
+    original_item = NewsItem(
+        id="arxiv:1",
+        source_id="arxiv_ai",
+        source_name="arXiv AI",
+        title="RSS Title",
+        link="https://arxiv.org/abs/2503.12345",
+        summary="RSS summary",
+        published_at=datetime(2026, 3, 1, tzinfo=UTC),
+    )
+
+    enriched = await service.enrich_items([original_item])
+
+    assert enriched == [original_item]
+    assert "Failed to fetch arXiv metadata for 1 items; skipping enrichment" in caplog.text
